@@ -23,7 +23,6 @@ def derivePublicKey(private_key: str) -> str:
 
 
 def generateKeypair() -> tuple[str, str]:
-    private_key = generateKeypair()
+    private_key = generatePrivateKey()
     public_key = derivePublicKey(private_key)
     return private_key, public_key
-
