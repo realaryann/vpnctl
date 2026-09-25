@@ -39,14 +39,55 @@ def _load_identity(path: Path) -> str:
     return identity["public_key"]
 
 
-def initialize_identity() -> tuple[Path, str, bool]:
-    """Return (path, public key, created), reusing a valid existing identity."""
+def config_directory() -> Path:
+    """Create or secure the per-user configuration directory."""
     directory = Path.home() / ".config" / "vpnctl"
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = directory.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
         raise StorageError("Identity directory must be a real directory owned by your user.")
     directory.chmod(0o700)
+    return directory
+
+
+def load_server_settings() -> dict | None:
+    path = config_directory() / "server.json"
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(fd, "r", encoding="utf-8") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise StorageError("Server settings must be a regular file owned by your user.")
+        os.fchmod(stream.fileno(), 0o600)
+        try:
+            settings = json.loads(stream.read(16385))
+        except (ValueError, UnicodeError):
+            raise StorageError("Invalid server settings. Run vpnctl enroll --reconfigure.") from None
+    if not isinstance(settings, dict) or settings.get("version") != 1:
+        raise StorageError("Unsupported server settings. Run vpnctl enroll --reconfigure.")
+    return settings
+
+
+def save_server_settings(settings: dict) -> None:
+    directory = config_directory()
+    fd, name = tempfile.mkstemp(prefix=".server-", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            json.dump(settings, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, directory / "server.json")
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def initialize_identity() -> tuple[Path, str, bool]:
+    """Return (path, public key, created), reusing a valid existing identity."""
+    directory = config_directory()
     path = directory / "identity.json"
     try:
         return path, _load_identity(path), False
