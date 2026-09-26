@@ -6,10 +6,14 @@ import typer
 
 from .enrollment import EnrollmentError, register_peer, validate_connection
 from .keys import WireGuardKeyError
+from .profile import ProfileError, build_profile
+from .tunnel import Tunnel, TunnelError
 from .storage import (
     StorageError,
     initialize_identity,
+    load_identity,
     load_server_settings,
+    save_profile,
     save_server_settings,
 )
 
@@ -23,6 +27,39 @@ app = typer.Typer(
 keys_app = typer.Typer(help="Manage this Mac's WireGuard identity.", no_args_is_help=True)
 app.add_typer(keys_app, name="keys")
 
+profile_app = typer.Typer(help="Generate a WireGuard client profile.", no_args_is_help=True)
+app.add_typer(profile_app, name="profile")
+
+
+@profile_app.command("create")
+def profile_create(
+    dns: str | None = typer.Option(None, help="Comma-separated IPv4 DNS servers; prompts if omitted."),
+    endpoint: str | None = typer.Option(None, help="Public server hostname/IP override, without a port."),
+    replace: bool = typer.Option(False, "--replace", help="Replace an existing profile. Disconnect it first."),
+) -> None:
+    """Save an importable profile using the existing enrollment and identity."""
+    try:
+        settings = load_server_settings()
+        if settings is None:
+            raise ProfileError("No enrollment found. Run vpnctl enroll first.")
+        identity = load_identity()
+        if dns is None:
+            if not sys.stdin.isatty():
+                raise ProfileError("Pass --dns with IPv4 DNS addresses, or run in an interactive terminal.")
+            dns = typer.prompt("IPv4 DNS servers from your working configuration (comma-separated)")
+        contents = build_profile(identity, settings, dns, endpoint)
+        path = save_profile(contents, replace=replace)
+    except (ProfileError, StorageError, WireGuardKeyError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    except OSError:
+        typer.echo("Error: Could not read or save local configuration. Check ~/vpnctl permissions.", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Profile saved: {path}")
+    typer.echo("Disconnect your old tunnel, then import this file into the WireGuard app.")
+    typer.echo("IPv4 uses the VPN; IPv6 is routed into the tunnel without server IPv6 access. Verify this on your Mac.")
+    typer.echo("No tunnel has been started.")
+
 
 @keys_app.command("init")
 def keys_init() -> None:
@@ -33,7 +70,7 @@ def keys_init() -> None:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=1) from None
     except OSError:
-        typer.echo("Error: Could not access identity storage. Check ~/.config/vpnctl permissions.", err=True)
+        typer.echo("Error: Could not access identity storage. Check ~/vpnctl permissions.", err=True)
         raise typer.Exit(code=1) from None
     typer.echo("Created client identity." if created else "Using existing client identity.")
     typer.echo(f"Identity file: {path}")
@@ -43,7 +80,6 @@ def keys_init() -> None:
 def _not_implemented(command: str) -> None:
     typer.echo(f"{command} is not implemented yet.", err=True)
     raise typer.Exit(code=1)
-
 
 @app.command()
 def enroll(
@@ -79,17 +115,28 @@ def enroll(
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=1) from None
     except OSError:
-        typer.echo("Error: Could not access local configuration. Check ~/.config/vpnctl permissions.", err=True)
+        typer.echo("Error: Could not access local configuration. Check ~/vpnctl permissions.", err=True)
         raise typer.Exit(code=1) from None
     typer.echo(f"Peer registered. Client VPN address: {registration['address']}")
-    typer.echo("Saved SSH settings and enrollment details in ~/.config/vpnctl/server.json.")
-    typer.echo("The VPN is not connected yet; client profile generation and tunnel control are still pending.")
+    typer.echo("Saved SSH settings and enrollment details in ~/vpnctl/server.json.")
+    typer.echo("Next: run vpnctl profile create to generate the client configuration.")
 
 
 @app.command()
 def connect() -> None:
     """Start the WireGuard VPN connection."""
-    _not_implemented("connect")
+    typer.echo("Checking local WireGuard state; macOS may request your administrator password.")
+    try:
+        tunnel = Tunnel()
+        tunnel.authenticate()
+        typer.echo(tunnel.connect())
+    except (TunnelError, StorageError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    except (OSError, UnicodeError):
+        typer.echo("Error: Could not access the profile or WireGuard tools. Check ~/vpnctl and your installation.", err=True)
+        raise typer.Exit(code=1) from None
+
 
 
 @app.command()
