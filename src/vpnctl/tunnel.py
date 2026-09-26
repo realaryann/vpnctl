@@ -102,7 +102,7 @@ printf '%s' "$iface"
             if key in {"preup", "postup", "predown", "postdown", "saveconfig"}:
                 raise TunnelError("Custom hooks and SaveConfig are unsupported. Use a vpnctl-generated profile.")
 
-    def _start(self):
+    def _change(self, action):
         self._check_profile()
         bash = self._tool("bash")
         version = subprocess.run([bash, "-c", 'printf "%s" "${BASH_VERSINFO[0]}"'],
@@ -114,12 +114,12 @@ printf '%s' "$iface"
         self._read("/usr/bin/true")
         with tempfile.TemporaryFile(mode="w+t") as output:
             result = subprocess.run(
-                ["/usr/bin/sudo", "-n", "--", bash, self.quick, "up", str(self.profile)],
+                ["/usr/bin/sudo", "-n", "--", bash, self.quick, action, str(self.profile)],
                 stdout=output, stderr=output, text=True,
             )
         if result.returncode:
             raise TunnelError(
-                "wg-quick up failed. See the README for manual inspection and shutdown commands. "
+                f"wg-quick {action} failed. See the README for manual inspection and shutdown commands. "
                 "Check that the WireGuard app tunnel is deactivated and CLI dependencies are installed."
             )
 
@@ -129,9 +129,18 @@ printf '%s' "$iface"
             interface = self.interface()
             if interface:
                 return f"Tunnel already active on {interface}. Use sudo wg show to inspect its handshake."
-            self._start()
+            self._change("up")
             interface = self.interface()
             if interface is None:
                 raise TunnelError("Startup returned successfully but no interface was found. Inspect networking before retrying.")
             return f"Tunnel started on {interface}. Use sudo wg show to inspect its handshake."
 
+    def disconnect(self):
+        """Stop only the CLI-managed lightsail interface, if it exists."""
+        with self.locked():
+            if self.interface() is None:
+                return "Tunnel already inactive: no CLI-managed lightsail interface."
+            self._change("down")
+            if self.interface() is not None:
+                raise TunnelError("The interface still appears active after wg-quick down. See the README for manual shutdown.")
+            return "Tunnel stopped. Allow a moment for wg-quick's background route and DNS cleanup."

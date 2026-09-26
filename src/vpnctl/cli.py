@@ -142,7 +142,17 @@ def connect() -> None:
 @app.command()
 def disconnect() -> None:
     """Stop the WireGuard VPN connection."""
-    _not_implemented("disconnect")
+    typer.echo("Checking local WireGuard state; macOS may request your administrator password.")
+    try:
+        tunnel = Tunnel()
+        tunnel.authenticate()
+        typer.echo(tunnel.disconnect())
+    except (TunnelError, StorageError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    except (OSError, UnicodeError):
+        typer.echo("Error: Could not access the profile or WireGuard tools. Check ~/vpnctl and your installation.", err=True)
+        raise typer.Exit(code=1) from None
 
 
 @app.command()

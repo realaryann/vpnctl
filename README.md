@@ -153,8 +153,18 @@ connected. Custom hooks and SaveConfig are unsupported. Repeated connect calls
 report when the CLI-managed interface already exists. A local lock prevents
 concurrent vpnctl connection attempts.
 
-This commit implements connect only; `vpnctl disconnect` and `vpnctl status`
-remain placeholders. For now, inspect the tunnel with:
+To stop the CLI-managed tunnel, run:
+
+```sh
+vpnctl disconnect
+```
+
+Disconnect requests administrator authentication, runs `wg-quick down`, and
+verifies the interface mapping is gone. Repeated calls report that the tunnel
+is already inactive. It does not stop tunnels managed by the WireGuard app.
+Keep `~/vpnctl/lightsail.conf` available until shutdown completes.
+
+`vpnctl status` remains a placeholder. For now, inspect the tunnel with:
 
 ```sh
 sudo /opt/homebrew/bin/wg show
