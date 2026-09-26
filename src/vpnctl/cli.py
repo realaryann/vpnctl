@@ -77,10 +77,6 @@ def keys_init() -> None:
     typer.echo(f"Public key: {public_key}")
 
 
-def _not_implemented(command: str) -> None:
-    typer.echo(f"{command} is not implemented yet.", err=True)
-    raise typer.Exit(code=1)
-
 @app.command()
 def enroll(
     reconfigure: bool = typer.Option(False, "--reconfigure", help="Prompt again for the server and SSH private-key path."),
@@ -158,7 +154,17 @@ def disconnect() -> None:
 @app.command()
 def status() -> None:
     """Show the current VPN connection status."""
-    _not_implemented("status")
+    typer.echo("Checking local WireGuard state; macOS may request your administrator password.")
+    try:
+        tunnel = Tunnel()
+        tunnel.authenticate()
+        typer.echo(tunnel.status())
+    except (TunnelError, StorageError) as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1) from None
+    except (OSError, UnicodeError):
+        typer.echo("Error: Could not access local WireGuard state. Check ~/vpnctl and your installation.", err=True)
+        raise typer.Exit(code=1) from None
 
 
 if __name__ == "__main__":

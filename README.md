@@ -164,7 +164,20 @@ verifies the interface mapping is gone. Repeated calls report that the tunnel
 is already inactive. It does not stop tunnels managed by the WireGuard app.
 Keep `~/vpnctl/lightsail.conf` available until shutdown completes.
 
-`vpnctl status` remains a placeholder. For now, inspect the tunnel with:
+Inspect the CLI-managed tunnel without changing its connection:
+
+```sh
+vpnctl status
+```
+
+Status may request your administrator password. It reports the active macOS
+interface, each peer's public key, latest handshake age, and received/sent byte
+counters. A peer that has not completed a handshake is reported explicitly.
+When no CLI-managed interface exists it reports inactive; WireGuard app tunnels
+are managed separately. Status does not print private or preshared keys, and
+does not perform an internet connectivity check.
+
+For manual inspection, you can also use:
 
 ```sh
 sudo /opt/homebrew/bin/wg show

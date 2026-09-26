@@ -9,6 +9,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 
 from .storage import config_directory
 
@@ -128,12 +129,12 @@ printf '%s' "$iface"
         with self.locked():
             interface = self.interface()
             if interface:
-                return f"Tunnel already active on {interface}. Use sudo wg show to inspect its handshake."
+                return f"Tunnel already active on {interface}. Use vpnctl status to inspect its handshake."
             self._change("up")
             interface = self.interface()
             if interface is None:
                 raise TunnelError("Startup returned successfully but no interface was found. Inspect networking before retrying.")
-            return f"Tunnel started on {interface}. Use sudo wg show to inspect its handshake."
+            return f"Tunnel started on {interface}. Use vpnctl status to inspect its handshake."
 
     def disconnect(self):
         """Stop only the CLI-managed lightsail interface, if it exists."""
@@ -144,3 +145,45 @@ printf '%s' "$iface"
             if self.interface() is not None:
                 raise TunnelError("The interface still appears active after wg-quick down. See the README for manual shutdown.")
             return "Tunnel stopped. Allow a moment for wg-quick's background route and DNS cleanup."
+
+    def status(self):
+        """Report public runtime fields without exposing private or preshared keys."""
+        with self.locked():
+            interface = self.interface()
+            if interface is None:
+                return "Inactive: no CLI-managed lightsail tunnel. WireGuard app tunnels are managed separately."
+            # Never use `wg show ... dump`: its output contains secret keys.
+            handshakes = self._read(self.wg, "show", interface, "latest-handshakes")
+            transfers = self._read(self.wg, "show", interface, "transfer")
+            lines = ["Tunnel: lightsail (active)", f"Interface: {interface}"]
+            try:
+                traffic = {}
+                for row in transfers.splitlines():
+                    key, received, sent = row.split()
+                    received, sent = int(received), int(sent)
+                    if received < 0 or sent < 0:
+                        raise ValueError
+                    traffic[key] = (received, sent)
+                for row in handshakes.splitlines():
+                    key, timestamp = row.split()
+                    stamp = int(timestamp)
+                    if stamp < 0 or key not in traffic:
+                        raise ValueError
+                    if stamp == 0:
+                        description = "never (handshake not established)"
+                    else:
+                        age = max(0, int(time.time()) - stamp)
+                        description = f"{age} seconds ago"
+                    received, sent = traffic[key]
+                    lines.extend([
+                        f"Peer: {key}",
+                        f"Latest handshake: {description}",
+                        f"Received: {received:,} bytes",
+                        f"Sent: {sent:,} bytes",
+                    ])
+            except ValueError:
+                raise TunnelError("Unexpected WireGuard status output. Retry vpnctl status.") from None
+            if not handshakes:
+                lines.append("No peers configured on this interface.")
+            lines.append("An active interface does not by itself confirm internet connectivity.")
+            return "\n".join(lines)
