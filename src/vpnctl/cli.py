@@ -4,17 +4,17 @@ import sys
 
 import typer
 
-from .enrollment import EnrollmentError, register_peer, validate_connection
+from .enrollment import EnrollmentError, registerPeer, validateConnection
 from .keys import WireGuardKeyError
-from .profile import ProfileError, build_profile
+from .profile import ProfileError, buildProfile
 from .tunnel import Tunnel, TunnelError
 from .storage import (
     StorageError,
-    initialize_identity,
-    load_identity,
-    load_server_settings,
-    save_profile,
-    save_server_settings,
+    initializeIdentity,
+    loadIdentity,
+    loadServerSettings,
+    saveProfile,
+    saveServerSettings,
 )
 
 app = typer.Typer(
@@ -24,31 +24,31 @@ app = typer.Typer(
     pretty_exceptions_show_locals=False,
 )
 
-keys_app = typer.Typer(help="Manage this Mac's WireGuard identity.", no_args_is_help=True)
-app.add_typer(keys_app, name="keys")
+keysApp = typer.Typer(help="Manage this Mac's WireGuard identity.", no_args_is_help=True)
+app.add_typer(keysApp, name="keys")
 
-profile_app = typer.Typer(help="Generate a WireGuard client profile.", no_args_is_help=True)
-app.add_typer(profile_app, name="profile")
+profileApp = typer.Typer(help="Generate a WireGuard client profile.", no_args_is_help=True)
+app.add_typer(profileApp, name="profile")
 
 
-@profile_app.command("create")
-def profile_create(
+@profileApp.command("create")
+def profileCreate(
     dns: str | None = typer.Option(None, help="Comma-separated IPv4 DNS servers; prompts if omitted."),
     endpoint: str | None = typer.Option(None, help="Public server hostname/IP override, without a port."),
     replace: bool = typer.Option(False, "--replace", help="Replace an existing profile. Disconnect it first."),
 ) -> None:
     """Save an importable profile using the existing enrollment and identity."""
     try:
-        settings = load_server_settings()
+        settings = loadServerSettings()
         if settings is None:
             raise ProfileError("No enrollment found. Run vpnctl enroll first.")
-        identity = load_identity()
+        identity = loadIdentity()
         if dns is None:
             if not sys.stdin.isatty():
                 raise ProfileError("Pass --dns with IPv4 DNS addresses, or run in an interactive terminal.")
             dns = typer.prompt("IPv4 DNS servers from your working configuration (comma-separated)")
-        contents = build_profile(identity, settings, dns, endpoint)
-        path = save_profile(contents, replace=replace)
+        contents = buildProfile(identity, settings, dns, endpoint)
+        path = saveProfile(contents, replace=replace)
     except (ProfileError, StorageError, WireGuardKeyError) as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=1) from None
@@ -61,11 +61,11 @@ def profile_create(
     typer.echo("No tunnel has been started.")
 
 
-@keys_app.command("init")
-def keys_init() -> None:
+@keysApp.command("init")
+def keysInit() -> None:
     """Create a local keypair, or reuse the existing identity without replacing it."""
     try:
-        path, public_key, created = initialize_identity()
+        path, publicKey, created = initializeIdentity()
     except (WireGuardKeyError, StorageError) as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(code=1) from None
@@ -74,7 +74,7 @@ def keys_init() -> None:
         raise typer.Exit(code=1) from None
     typer.echo("Created client identity." if created else "Using existing client identity.")
     typer.echo(f"Identity file: {path}")
-    typer.echo(f"Public key: {public_key}")
+    typer.echo(f"Public key: {publicKey}")
 
 
 @app.command()
@@ -83,7 +83,7 @@ def enroll(
 ) -> None:
     """Register this Mac on wg0; first use requires typing an SSH private-key path."""
     try:
-        settings = None if reconfigure else load_server_settings()
+        settings = None if reconfigure else loadServerSettings()
         if settings is None:
             if not sys.stdin.isatty():
                 raise EnrollmentError("First enrollment requires an interactive terminal so you can type the SSH private-key path.")
@@ -97,14 +97,14 @@ def enroll(
                 # or command-line option: first setup requires an explicit path.
                 "key_path": typer.prompt("Type the path to your Lightsail SSH private key").strip(),
             }
-        key_path = validate_connection(settings)
-        settings["key_path"] = str(key_path)
-        _, public_key, _ = initialize_identity()
+        keyPath = validateConnection(settings)
+        settings["key_path"] = str(keyPath)
+        _, publicKey, _ = initializeIdentity()
         typer.echo(f"Enrolling on {settings['host']} (wg0). SSH may prompt for host verification or your key passphrase.")
-        registration = register_peer(settings, public_key)
+        registration = registerPeer(settings, publicKey)
         settings["registration"] = registration
         try:
-            save_server_settings(settings)
+            saveServerSettings(settings)
         except (OSError, StorageError):
             raise EnrollmentError("The server registered your peer, but saving local settings failed. Fix local storage permissions and rerun enroll with the same identity.") from None
     except (EnrollmentError, WireGuardKeyError, StorageError) as error:

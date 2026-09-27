@@ -6,14 +6,14 @@ import stat
 import tempfile
 from pathlib import Path
 
-from .keys import derivePublicKey, generateKeypair, validate_key
+from .keys import derivePublicKey, generateKeypair, validateKey
 
 
 class StorageError(Exception):
     """The local identity cannot be safely read or written."""
 
 
-def _read_identity(path: Path) -> dict:
+def _readIdentity(path: Path) -> dict:
     """Read and validate the stored keypair without displaying its contents."""
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "r", encoding="utf-8") as stream:
@@ -32,28 +32,28 @@ def _read_identity(path: Path) -> dict:
         or "public_key" not in identity
     ):
         raise StorageError("Stored identity is incomplete or unsupported; it has not been replaced.")
-    validate_key(identity["private_key"])
-    validate_key(identity["public_key"])
+    validateKey(identity["private_key"])
+    validateKey(identity["public_key"])
     if derivePublicKey(identity["private_key"]) != identity["public_key"]:
         raise StorageError("Stored public and private keys do not match; they have not been replaced.")
     return identity
 
 
-def _load_identity(path: Path) -> str:
-    return _read_identity(path)["public_key"]
+def _loadIdentity(path: Path) -> str:
+    return _readIdentity(path)["public_key"]
 
 
-def load_identity() -> dict:
+def loadIdentity() -> dict:
     """Load an existing identity; never generate a replacement for a profile."""
     try:
-        return _read_identity(config_directory() / "identity.json")
+        return _readIdentity(configDirectory() / "identity.json")
     except FileNotFoundError:
         raise StorageError("No local identity found. Run vpnctl enroll first.") from None
 
 
-def save_profile(contents: str, replace: bool = False) -> Path:
+def saveProfile(contents: str, replace: bool = False) -> Path:
     """Publish a complete owner-only profile, requiring explicit replacement."""
-    directory = config_directory()
+    directory = configDirectory()
     target = directory / "lightsail.conf"
     fd, name = tempfile.mkstemp(prefix="profile-", dir=directory)
     try:
@@ -74,13 +74,13 @@ def save_profile(contents: str, replace: bool = False) -> Path:
     return target
 
 
-def config_directory() -> Path:
+def configDirectory() -> Path:
     """Use a visible directory, migrating the old directory without merging it."""
     directory = Path.home() / "vpnctl"
     legacy = Path.home() / ".config" / "vpnctl"
     if os.path.lexists(legacy):
-        legacy_info = legacy.lstat()
-        if not stat.S_ISDIR(legacy_info.st_mode) or legacy_info.st_uid != os.getuid():
+        legacyInfo = legacy.lstat()
+        if not stat.S_ISDIR(legacyInfo.st_mode) or legacyInfo.st_uid != os.getuid():
             raise StorageError("Legacy storage must be a real directory owned by your user before migration.")
         if os.path.lexists(directory):
             raise StorageError(
@@ -100,8 +100,8 @@ def config_directory() -> Path:
     return directory
 
 
-def load_server_settings() -> dict | None:
-    path = config_directory() / "server.json"
+def loadServerSettings() -> dict | None:
+    path = configDirectory() / "server.json"
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
@@ -120,8 +120,8 @@ def load_server_settings() -> dict | None:
     return settings
 
 
-def save_server_settings(settings: dict) -> None:
-    directory = config_directory()
+def saveServerSettings(settings: dict) -> None:
+    directory = configDirectory()
     fd, name = tempfile.mkstemp(prefix="server-", dir=directory)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
@@ -135,19 +135,19 @@ def save_server_settings(settings: dict) -> None:
         Path(name).unlink(missing_ok=True)
 
 
-def initialize_identity() -> tuple[Path, str, bool]:
+def initializeIdentity() -> tuple[Path, str, bool]:
     """Return (path, public key, created), reusing a valid existing identity."""
-    directory = config_directory()
+    directory = configDirectory()
     path = directory / "identity.json"
     try:
-        return path, _load_identity(path), False
+        return path, _loadIdentity(path), False
     except FileNotFoundError:
         pass
 
-    private_key, public_key = generateKeypair()
-    identity = {"version": 1, "private_key": private_key, "public_key": public_key}
-    fd, temporary_name = tempfile.mkstemp(prefix="identity-", dir=directory)
-    temporary_path = Path(temporary_name)
+    privateKey, publicKey = generateKeypair()
+    identity = {"version": 1, "private_key": privateKey, "public_key": publicKey}
+    fd, temporaryName = tempfile.mkstemp(prefix="identity-", dir=directory)
+    temporaryPath = Path(temporaryName)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             os.fchmod(stream.fileno(), 0o600)
@@ -157,9 +157,9 @@ def initialize_identity() -> tuple[Path, str, bool]:
             os.fsync(stream.fileno())
         try:
             # Publish a complete file atomically; never replace an existing identity.
-            os.link(temporary_path, path)
+            os.link(temporaryPath, path)
         except FileExistsError:
-            return path, _load_identity(path), False
-        return path, public_key, True
+            return path, _loadIdentity(path), False
+        return path, publicKey, True
     finally:
-        temporary_path.unlink(missing_ok=True)
+        temporaryPath.unlink(missing_ok=True)

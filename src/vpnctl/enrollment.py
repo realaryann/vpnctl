@@ -9,14 +9,14 @@ import shlex
 import stat
 import subprocess
 
-from .keys import validate_key
+from .keys import validateKey
 
 
 class EnrollmentError(Exception):
     """Enrollment could not complete."""
 
 
-def validate_connection(settings: dict) -> Path:
+def validateConnection(settings: dict) -> Path:
     host = settings.get("host", "")
     user = settings.get("user", "")
     port = settings.get("port")
@@ -26,11 +26,11 @@ def validate_connection(settings: dict) -> Path:
         raise EnrollmentError("Invalid SSH username.")
     if type(port) is not int or not 1 <= port <= 65535:
         raise EnrollmentError("SSH port must be between 1 and 65535.")
-    raw_path = settings.get("key_path")
-    if not isinstance(raw_path, str) or not raw_path.strip():
+    rawPath = settings.get("key_path")
+    if not isinstance(rawPath, str) or not rawPath.strip():
         raise EnrollmentError("An SSH private-key path is required.")
     try:
-        path = Path(raw_path).expanduser().resolve(strict=True)
+        path = Path(rawPath).expanduser().resolve(strict=True)
         info = path.stat()
     except (OSError, RuntimeError):
         raise EnrollmentError("The SSH private-key path does not resolve to an accessible file.") from None
@@ -41,11 +41,11 @@ def validate_connection(settings: dict) -> Path:
     return path
 
 
-def register_peer(settings: dict, public_key: str) -> dict:
-    key_path = validate_connection(settings)
-    validate_key(public_key)
+def registerPeer(settings: dict, publicKey: str) -> dict:
+    keyPath = validateConnection(settings)
+    validateKey(publicKey)
     helper = Path(__file__).with_name("server_enroll.py").read_text(encoding="utf-8")
-    remote = ["python3", "-", public_key]
+    remote = ["python3", "-", publicKey]
     if settings["user"] != "root":
         remote = ["sudo", "-n", "--", *remote]
     command = [
@@ -56,7 +56,7 @@ def register_peer(settings: dict, public_key: str) -> dict:
         "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes",
         "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15",
         "-o", "ServerAliveCountMax=2",
-        "-i", str(key_path), "-p", str(settings["port"]),
+        "-i", str(keyPath), "-p", str(settings["port"]),
         "-l", settings["user"], settings["host"], shlex.join(remote),
     ]
     try:
@@ -74,9 +74,9 @@ def register_peer(settings: dict, public_key: str) -> dict:
         raise EnrollmentError("Enrollment failed. Check the SSH/server message above. The server needs Python 3, wg, and root or passwordless sudo access. Retrying with the same identity is safe.")
     try:
         response = json.loads(result.stdout)
-        if not isinstance(response, dict) or response.get("public_key") != public_key:
+        if not isinstance(response, dict) or response.get("public_key") != publicKey:
             raise ValueError
-        validate_key(response["server_public_key"])
+        validateKey(response["server_public_key"])
         address = ipaddress.ip_interface(response["address"])
         if address.version != 4 or address.network.prefixlen != 32:
             raise ValueError

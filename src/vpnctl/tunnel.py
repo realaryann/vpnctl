@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 import time
 
-from .storage import config_directory
+from .storage import configDirectory
 
 
 class TunnelError(Exception):
@@ -24,7 +24,7 @@ class Tunnel:
             raise TunnelError("Tunnel control currently supports macOS only.")
         if os.geteuid() == 0:
             raise TunnelError("Run vpnctl as your normal user; it will request sudo when needed.")
-        self.directory = config_directory()
+        self.directory = configDirectory()
         self.profile = self.directory / "lightsail.conf"
         self.wg = self._tool("wg")
         self.quick = self._tool("wg-quick")
@@ -86,7 +86,7 @@ printf '%s' "$iface"
             return None
         return interface
 
-    def _check_profile(self):
+    def _checkProfile(self):
         try:
             fd = os.open(self.profile, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         except FileNotFoundError:
@@ -104,7 +104,7 @@ printf '%s' "$iface"
                 raise TunnelError("Custom hooks and SaveConfig are unsupported. Use a vpnctl-generated profile.")
 
     def _change(self, action):
-        self._check_profile()
+        self._checkProfile()
         bash = self._tool("bash")
         version = subprocess.run([bash, "-c", 'printf "%s" "${BASH_VERSINFO[0]}"'],
                                  capture_output=True, text=True, timeout=10)

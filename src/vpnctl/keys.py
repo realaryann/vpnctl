@@ -9,7 +9,7 @@ class WireGuardKeyError(Exception):
     """A key is invalid or a WireGuard key operation failed."""
 
 
-def validate_key(value: str) -> None:
+def validateKey(value: str) -> None:
     """Require a canonical base64-encoded, nonzero 32-byte key."""
     if not isinstance(value, str):
         raise WireGuardKeyError("Invalid WireGuard key format.")
@@ -25,11 +25,11 @@ def validate_key(value: str) -> None:
         raise WireGuardKeyError("Invalid WireGuard key format.")
 
 
-def _run_wg(operation: str, private_key: str | None = None) -> str:
+def _runWg(operation: str, privateKey: str | None = None) -> str:
     try:
         result = subprocess.run(
             ["wg", operation],
-            input=private_key + "\n" if private_key is not None else None,
+            input=privateKey + "\n" if privateKey is not None else None,
             capture_output=True,
             text=True,
             check=True,
@@ -43,20 +43,20 @@ def _run_wg(operation: str, private_key: str | None = None) -> str:
         # Never include subprocess output: it may contain private key material.
         raise WireGuardKeyError("WireGuard key operation failed. Check your local wg installation.") from None
     value = result.stdout.strip()
-    validate_key(value)
+    validateKey(value)
     return value
 
 
 def generatePrivateKey() -> str:
-    return _run_wg("genkey")
+    return _runWg("genkey")
 
 
-def derivePublicKey(private_key: str) -> str:
-    validate_key(private_key)
-    return _run_wg("pubkey", private_key)
+def derivePublicKey(privateKey: str) -> str:
+    validateKey(privateKey)
+    return _runWg("pubkey", privateKey)
 
 
 def generateKeypair() -> tuple[str, str]:
-    private_key = generatePrivateKey()
-    public_key = derivePublicKey(private_key)
-    return private_key, public_key
+    privateKey = generatePrivateKey()
+    publicKey = derivePublicKey(privateKey)
+    return privateKey, publicKey
